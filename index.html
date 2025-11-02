@@ -4,13 +4,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Puzzle 100 pièces (10×10) – Bac agrandi</title>
+  <title>Puzzle 108 pièces (9×12) – 4/3 portrait</title>
   <style>
     :root {
-      --board-size: min(76vmin, 720px);
-      --cols: 10;
-      --rows: 10;
-      --cell: calc(var(--board-size) / var(--cols));
+      --cols: 9;
+      --rows: 12;
+      /* Portrait 3:4 (width/height = 3/4) car 9/12 = 3/4 */
+      --board-h: min(86vh, 960px);
+      --board-w: calc(var(--board-h) * var(--cols) / var(--rows));
+      --cell: calc(var(--board-w) / var(--cols));
     }
 
     * {
@@ -62,7 +64,7 @@
 
     main {
       display: grid;
-      grid-template-columns: var(--board-size) minmax(380px, 560px);
+      grid-template-columns: var(--board-w) minmax(360px, 560px);
       gap: 18px;
       align-items: start;
       padding: 16px clamp(12px, 3vw, 24px)
@@ -74,11 +76,10 @@
       }
     }
 
-    /* Board */
     .board {
       position: relative;
-      width: var(--board-size);
-      height: var(--board-size);
+      width: var(--board-w);
+      height: var(--board-h);
       background: #0b0c10;
       border-radius: 16px;
       outline: 1px solid #23252b;
@@ -92,11 +93,14 @@
       position: absolute;
       inset: 0;
       pointer-events: none;
-      background-image: linear-gradient(to right, rgba(255, 255, 255, .06) 1px, transparent 1px), linear-gradient(to bottom, rgba(255, 255, 255, .06) 1px, transparent 1px);
-      background-size: calc(var(--board-size)/var(--cols)) var(--board-size), var(--board-size) calc(var(--board-size)/var(--rows))
+      background-image:
+        linear-gradient(to right, rgba(255, 255, 255, .06) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, .06) 1px, transparent 1px);
+      background-size:
+        calc(var(--board-w)/var(--cols)) var(--board-h),
+        var(--board-w) calc(var(--board-h)/var(--rows));
     }
 
-    /* Sidebar */
     .sidebar {
       position: sticky;
       top: 84px;
@@ -106,7 +110,9 @@
     }
 
     .preview {
-      height: 180px;
+      aspect-ratio: 3 / 4;
+      height: auto;
+      min-height: 220px;
       border-radius: 12px;
       outline: 1px solid #23252b;
       background: #090a0f center/contain no-repeat
@@ -122,11 +128,9 @@
       font-variant-numeric: tabular-nums
     }
 
-    /* BIG tray */
     .tray {
       position: relative;
       height: 72vh;
-      /* << beaucoup plus grand */
       background: #141722;
       outline: 1px solid #23252b;
       border-radius: 16px;
@@ -137,20 +141,16 @@
 
     .tray-inner {
       position: relative;
-      min-height: 100%;
+      min-height: 100%
     }
 
-    .tray::webkit-scrollbar {
-      width: 8px
-    }
-
-    /* Pieces */
     .piece {
       position: absolute;
       cursor: grab;
       filter: drop-shadow(0 0 0.6px rgba(0, 0, 0, .55)) drop-shadow(0 6px 10px rgba(0, 0, 0, .4));
       background-repeat: no-repeat;
-      transition: opacity .15s ease
+      transition: opacity .15s ease;
+      will-change: left, top
     }
 
     .piece:active {
@@ -175,9 +175,8 @@
 
 <body>
   <header>
-    <h1>🧩 Puzzle 100 pièces</h1>
-    <label class="btn secondary" for="file">Importer une image</label>
-    <input id="file" type="file" accept="image/*" style="display:none" />
+    <h1>🧩 Puzzle 108 pièces</h1>
+    <button id="changeBg" class="btn secondary">Changer le fond de l'image</button>
     <button id="shuffle" class="btn">Mélanger</button>
     <label style="margin-left:12px; display:flex; align-items:center; gap:6px; font-size:14px; opacity:.9">
       <input id="autoLockToggle" type="checkbox" checked /> Verrouillage auto (pièces bien placées)
@@ -190,65 +189,64 @@
     </div>
     <aside class="sidebar">
       <div id="preview" class="preview" aria-label="Aperçu de l'image"></div>
-      <div class="progress"><span>Placées</span><strong><span id="count">0</span>/100</strong></div>
+      <div class="progress"><span>Placées</span><strong><span id="count">0</span>/<span id="total">108</span></strong>
+      </div>
       <div class="tray" id="tray" aria-label="Bac de pièces (faites glisser)">
         <div class="tray-inner" id="trayInner"></div>
       </div>
     </aside>
   </main>
 
-  <footer>L'image ne s'affiche que dans l'aperçu. Le bac est agrandi pour voir toutes les pièces.</footer>
+  <footer>Plateau 4/3 en <strong>portrait</strong> (9×12 = 108 pièces).</footer>
 
   <script>
     // --- Config ---
-    const COLS = 10, ROWS = 10, TOTAL = COLS * ROWS;
+    const COLS = 9, ROWS = 12, TOTAL = COLS * ROWS;
     const board = document.getElementById('board');
     const tray = document.getElementById('tray');
     const trayInner = document.getElementById('trayInner');
     const preview = document.getElementById('preview');
-    const fileInput = document.getElementById('file');
     const shuffleBtn = document.getElementById('shuffle');
+    const changeBgBtn = document.getElementById('changeBg');
     const countEl = document.getElementById('count');
+    const totalEl = document.getElementById('total');
     const autoLockToggle = document.getElementById('autoLockToggle');
+    totalEl.textContent = String(TOTAL);
     let autoLock = true;
 
-    let imgURL = null, cell = 0, placedCount = 0;
-    let pieces = [], occupied = new Map();
+    // 🔗 4 URLs d'images modifiables
+    const images = [
+      'https://media.discordapp.net/attachments/793132096494764065/1434653608019886315/Image_Puzzle_ecologique_Nov_2_2025_1.png?ex=69091cca&is=6907cb4a&hm=89a225b47faeb3022f0cbba6e59ead0139a32a7509fd1341b745d11090d80b80&=&format=webp&quality=lossless&width=466&height=700',
+      'https://media.discordapp.net/attachments/793132096494764065/1434655853436338420/Image_Puzzle_ecologique_enfantin_Nov_2_2025_1.png?ex=69091ee2&is=6907cd62&hm=9cce127ffffc816e251d55fde08645839ee28cc25871a49d4975ddb5c99b4c3b&=&format=webp&quality=lossless&width=1304&height=1956',
+      'https://media.discordapp.net/attachments/793132096494764065/1434656931343237211/Image_Puzzle_ecologique_Nov_2_2025_2.png?ex=69091fe3&is=6907ce63&hm=55ae80382d5103737c9f82a7100383a6d8af7651d0e37ead8b7d84ed83bc5046&=&format=webp&quality=lossless&width=1304&height=1956',
+      'https://media.discordapp.net/attachments/793132096494764065/1434657901401739394/Image_Puzzle_ecologique_Nov_2_2025_3.png?ex=690920ca&is=6907cf4a&hm=2881df80251d918157c511d39819a4448485f741996f8aa0e010ebf2a08777ed&=&format=webp&quality=lossless&width=1304&height=1956'
+    ];
 
-    const defaultImage = 'https://media.discordapp.net/attachments/793132096494764065/1432319977922367518/ChatGPT_Image_Oct_27_2025_11_45_37_AM.png?ex=69009f6d&is=68ff4ded&hm=2e742f38ce1c5574d5d696efb228331b4375e72fdac6567c7c30901b3f7c731f&=&format=webp&quality=lossless&width=1956&height=1956';
+    let currentImageIndex = 0;
+    let imgURL = images[0], cell = 0, placedCount = 0;
+    let pieces = [], occupied = new Map();
 
     // Edge maps (tenon/creux)
     const H = Array.from({ length: ROWS }, () => Array(COLS - 1).fill(0));
     const V = Array.from({ length: ROWS - 1 }, () => Array(COLS).fill(0));
 
-    function setMetrics() { cell = board.getBoundingClientRect().width / COLS; document.documentElement.style.setProperty('--cell', cell + 'px'); }
+    function setMetrics() {
+      cell = board.getBoundingClientRect().width / COLS;
+      document.documentElement.style.setProperty('--cell', cell + 'px');
+    }
     function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
     function genEdges() {
-      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS - 1; c++) H[r][c] = Math.random() > .5 ? 1 : -1;
-      for (let r = 0; r < ROWS - 1; r++) for (let c = 0; c < COLS; c++) V[r][c] = Math.random() > .5 ? 1 : -1;
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS - 1; c++)
+          H[r][c] = Math.random() > .5 ? 1 : -1;
+      for (let r = 0; r < ROWS - 1; r++)
+        for (let c = 0; c < COLS; c++)
+          V[r][c] = Math.random() > .5 ? 1 : -1;
     }
 
-    // --- Edge helpers ---
-    function edgesForPieceOrigin(r0, c0) {
-      return {
-        top: (r0 === 0) ? 0 : -V[r0 - 1][c0],
-        right: (c0 === COLS - 1) ? 0 : H[r0][c0],
-        bottom: (r0 === ROWS - 1) ? 0 : V[r0][c0],
-        left: (c0 === 0) ? 0 : -H[r0][c0 - 1],
-      };
-    }
-    function requiredEdgesForCell(r, c) {
-      return {
-        top: (r === 0) ? 0 : -V[r - 1][c],
-        right: (c === COLS - 1) ? 0 : H[r][c],
-        bottom: (r === ROWS - 1) ? 0 : V[r][c],
-        left: (c === 0) ? 0 : -H[r][c - 1],
-      };
-    }
-    function edgesMatch(e1, e2) { return e1.top === e2.top && e1.right === e2.right && e1.bottom === e2.bottom && e1.left === e2.left; }
-
+    // --- Forme des pièces (stable) ---
     function piecePath(r, c) {
-      const s = cell, bleed = s * .22, k = s * .18, t = s * .35; // base
+      const s = cell, bleed = s * .22, k = s * .18, t = s * .35;
       const EPS = Math.max(0.75, s * 0.0025);
       const signTop = (r === 0) ? 0 : -V[r - 1][c];
       const signRight = (c === COLS - 1) ? 0 : H[r][c];
@@ -256,13 +254,8 @@
       const signLeft = (c === 0) ? 0 : -H[r][c - 1];
       const X = x => x + bleed, Y = y => y + bleed;
 
-      // Canonical TOP edge path from x=0->s (clockwise). We'll mirror for others.
       function topEdge(sign) {
-        if (sign === 0) {
-          return [
-            ['L', X(s + EPS), Y(-EPS)]
-          ];
-        }
+        if (sign === 0) return [['L', X(s + EPS), Y(-EPS)]];
         const mid = s / 2, h = t * sign, cp = k;
         return [
           ['L', X(mid - k), Y(-EPS)],
@@ -271,11 +264,7 @@
           ['L', X(s + EPS), Y(-EPS)]
         ];
       }
-
-      // Mirror helpers
-      const mirrorY = (cmd) => cmd.map((v, i) => (i % 2 ? v : v)).slice(); // placeholder (we keep X)
       function rightEdge(sign) {
-        // rotate +90°: swap (x,y)->(y,x) around (s,s)
         if (sign === 0) return [['L', X(s + EPS), Y(s + EPS)]];
         const mid = s / 2, h = t * sign, cp = k;
         return [
@@ -306,61 +295,85 @@
         ];
       }
 
-      const cmds = [['M', X(-EPS), Y(-EPS)], ...topEdge(signTop), ...rightEdge(signRight), ...bottomEdge(signBottom), ...leftEdge(signLeft)];
-      // Build path string
+      const cmds = [
+        ['M', X(-EPS), Y(-EPS)],
+        ...topEdge(signTop),
+        ...rightEdge(signRight),
+        ...bottomEdge(signBottom),
+        ...leftEdge(signLeft)
+      ];
       let d = '';
-      for (const c of cmds) { d += c[0] + ' ' + c.slice(1).join(' ') + ' '; }
+      for (const c2 of cmds) d += c2[0] + ' ' + c2.slice(1).join(' ') + ' ';
       d += 'Z';
       return d;
     }
 
     function createPiece(r, c, url) {
-      const el = document.createElement('div'); el.className = 'piece'; el.dataset.index = r * COLS + c; el.dataset.row = r; el.dataset.col = c;
-      const bleed = cell * .3, elW = cell + 2 * bleed; el.style.width = elW + 'px'; el.style.height = elW + 'px';
-      // Random position inside big tray
-      const tr = trayInner.getBoundingClientRect();
+      const el = document.createElement('div');
+      el.className = 'piece';
+      el.dataset.index = r * COLS + c;
+      el.dataset.row = r; el.dataset.col = c;
+      const bleed = cell * .3, elW = cell + 2 * bleed;
+      el.style.width = elW + 'px'; el.style.height = elW + 'px';
       const x = 12 + Math.random() * Math.max(12, (tray.clientWidth - elW - 36));
-      const y = 12 + Math.random() * Math.max(12, (tray.clientHeight * 2 - elW - 36)); // génére une grande zone scrollable
+      const y = 12 + Math.random() * Math.max(12, (tray.clientHeight * 2 - elW - 36));
       el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.position = 'absolute';
       trayInner.appendChild(el);
 
-      // Background in pixels for perfect alignment
       el.style.backgroundImage = `url('${url}')`; el.style.backgroundRepeat = 'no-repeat';
       el.style.backgroundSize = `${COLS * cell}px ${ROWS * cell}px`;
       el.style.backgroundPosition = `${-c * cell + bleed}px ${-r * cell + bleed}px`;
 
-      const path = piecePath(r, c); el.style.clipPath = `path('${path}')`; el.style.webkitClipPath = `path('${path}')`;
+      const path = piecePath(r, c);
+      el.style.clipPath = `path('${path}')`;
+      el.style.webkitClipPath = `path('${path}')`;
+
       makeDraggable(el);
       pieces.push(el);
     }
 
     function makeDraggable(el) {
-      let drag = false, offX = 0, offY = 0, allowLockedDrag = false;
+      let drag = false, offX = 0, offY = 0;
       el.addEventListener('pointerdown', e => {
-        // Hold ALT (Option) to déplacer une pièce verrouillée
-        if (el.classList.contains('locked') && !e.altKey) { return; }
-        allowLockedDrag = e.altKey && el.classList.contains('locked');
-        drag = true; el.setPointerCapture(e.pointerId); const r = el.getBoundingClientRect(); offX = e.clientX - r.left; offY = e.clientY - r.top; el.style.zIndex = 20; el.style.opacity = .96; document.body.appendChild(el);
+        if (el.classList.contains('locked') && !e.altKey) return;
+        drag = true; el.setPointerCapture(e.pointerId);
+        const r = el.getBoundingClientRect();
+        offX = e.clientX - r.left; offY = e.clientY - r.top;
+        el.style.zIndex = 20; el.style.opacity = .96;
+        document.body.appendChild(el);
       });
-      window.addEventListener('pointermove', e => { if (!drag) return; el.style.left = (e.clientX - offX) + 'px'; el.style.top = (e.clientY - offY) + 'px'; });
+      window.addEventListener('pointermove', e => {
+        if (!drag) return;
+        el.style.left = (e.clientX - offX) + 'px';
+        el.style.top = (e.clientY - offY) + 'px';
+      });
       window.addEventListener('pointerup', e => {
-        if (!drag) return; drag = false; el.releasePointerCapture(e.pointerId); el.style.zIndex = ''; el.style.opacity = 1;
-        // free previous cell if any
+        if (!drag) return; drag = false;
+        el.releasePointerCapture(e.pointerId); el.style.zIndex = ''; el.style.opacity = 1;
         const prev = el.dataset.posIdx; if (prev && occupied.get(+prev) === el) occupied.delete(+prev);
-        const bcr = board.getBoundingClientRect(); const cx = e.clientX - offX + el.offsetWidth / 2; const cy = e.clientY - offY + el.offsetHeight / 2;
+        const bcr = board.getBoundingClientRect();
+        const cx = e.clientX - offX + el.offsetWidth / 2;
+        const cy = e.clientY - offY + el.offsetHeight / 2;
         if (cx >= bcr.left && cx <= bcr.right && cy >= bcr.top && cy <= bcr.bottom) {
-          const localX = cx - bcr.left; const localY = cy - bcr.top; const col = clamp(Math.round(localX / cell - 0.5), 0, COLS - 1); const row = clamp(Math.round(localY / cell - 0.5), 0, ROWS - 1); const idx = row * COLS + col;
-          // If cell already occupied, cancel
-          if (occupied.has(idx)) {
-            returnToTray(el);
-            return;
+          const localX = cx - bcr.left, localY = cy - bcr.top;
+          const col = clamp(Math.round(localX / cell - 0.5), 0, COLS - 1);
+          const row = clamp(Math.round(localY / cell - 0.5), 0, ROWS - 1);
+          const idx = row * COLS + col;
+          if (occupied.has(idx)) { returnToTray(el); return; }
+          board.appendChild(el);
+          const bleed = (el.offsetWidth - cell) / 2;
+          el.style.left = (col * cell - bleed) + 'px';
+          el.style.top = (row * cell - bleed) + 'px';
+          el.dataset.posIdx = idx;
+          occupied.set(idx, el);
+          if (autoLock && +el.dataset.index === idx) {
+            el.classList.add('locked'); placedCount++; updateProgress();
           }
-          board.appendChild(el); const bleed = (el.offsetWidth - cell) / 2; el.style.left = (col * cell - bleed) + 'px'; el.style.top = (row * cell - bleed) + 'px'; el.dataset.posIdx = idx; occupied.set(idx, el);
-          if (autoLock && +el.dataset.index === idx) { el.classList.add('locked'); placedCount++; updateProgress(); }
-        } else { returnToTray(el); }
+        } else {
+          returnToTray(el);
+        }
       });
 
-      // Double-clic pour déverrouiller une pièce déjà posée
       el.addEventListener('dblclick', () => {
         if (el.classList.contains('locked')) {
           el.classList.remove('locked');
@@ -369,22 +382,64 @@
       });
     }
 
-    function returnToTray(el) { trayInner.appendChild(el); const bleed = (el.offsetWidth - cell) / 2; const x = 12 + Math.random() * Math.max(12, (tray.clientWidth - (cell + 2 * bleed) - 36)); const y = 12 + Math.random() * Math.max(12, (tray.clientHeight * 2 - (cell + 2 * bleed) - 36)); el.style.left = x + 'px'; el.style.top = y + 'px'; el.dataset.posIdx = ''; }
+    function returnToTray(el) {
+      trayInner.appendChild(el);
+      const bleed = (el.offsetWidth - cell) / 2;
+      const x = 12 + Math.random() * Math.max(12, (tray.clientWidth - (cell + 2 * bleed) - 36));
+      const y = 12 + Math.random() * Math.max(12, (tray.clientHeight * 2 - (cell + 2 * bleed) - 36));
+      el.style.left = x + 'px'; el.style.top = y + 'px';
+      el.dataset.posIdx = '';
+    }
 
-    function updateProgress() { countEl.textContent = String(placedCount); /* could add confetti */ }
+    function updateProgress() { countEl.textContent = String(placedCount); }
 
-    function shufflePieces() { pieces.forEach(p => { p.classList.remove('locked'); p.dataset.posIdx = ''; }); occupied.clear(); placedCount = 0; updateProgress(); pieces.forEach(p => returnToTray(p)); }
+    function shufflePieces() {
+      pieces.forEach(p => { p.classList.remove('locked'); p.dataset.posIdx = ''; });
+      occupied.clear(); placedCount = 0; updateProgress();
+      pieces.forEach(p => returnToTray(p));
+    }
 
-    fileInput.addEventListener('change', e => { const file = e.target.files?.[0]; if (!file) return; if (imgURL) URL.revokeObjectURL(imgURL); imgURL = URL.createObjectURL(file); loadImageAndBuild(imgURL); });
-    function loadImageAndBuild(url) { const im = new Image(); im.onload = () => { preview.style.backgroundImage = `url('${url}')`; rebuild(url); }; im.src = url; }
+    function rebuild(url) {
+      pieces.forEach(p => p.remove());
+      pieces = []; occupied.clear(); placedCount = 0; updateProgress();
+      setMetrics(); genEdges();
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+          createPiece(r, c, url);
+    }
 
-    function rebuild(url) { pieces.forEach(p => p.remove()); pieces = []; occupied.clear(); placedCount = 0; updateProgress(); setMetrics(); genEdges(); for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) createPiece(r, c, url); }
+    function changeBackground() {
+      currentImageIndex = (currentImageIndex + 1) % images.length;
+      imgURL = images[currentImageIndex];
+      preview.style.backgroundImage = `url('${imgURL}')`;
+      rebuild(imgURL);
+    }
 
-    window.addEventListener('resize', () => { setMetrics(); /* keep already-placed aligned */ const bleedCalc = p => (p.offsetWidth - cell) / 2; pieces.forEach(p => { if (p.classList.contains('locked')) { const idx = +p.dataset.posIdx; if (Number.isFinite(idx)) { const row = Math.floor(idx / COLS), col = idx % COLS; const bleed = bleedCalc(p); p.style.left = (col * cell - bleed) + 'px'; p.style.top = (row * cell - bleed) + 'px'; board.appendChild(p); } } }); });
+    window.addEventListener('resize', () => {
+      setMetrics();
+      const bleedCalc = p => (p.offsetWidth - cell) / 2;
+      pieces.forEach(p => {
+        if (p.classList.contains('locked')) {
+          const idx = +p.dataset.posIdx;
+          if (Number.isFinite(idx)) {
+            const row = Math.floor(idx / COLS), col = idx % COLS;
+            const bleed = bleedCalc(p);
+            p.style.left = (col * cell - bleed) + 'px';
+            p.style.top = (row * cell - bleed) + 'px';
+            board.appendChild(p);
+          }
+        }
+      });
+    });
 
-    (function init() { imgURL = defaultImage; preview.style.backgroundImage = `url('${imgURL}')`; setMetrics(); genEdges(); rebuild(imgURL); })();
+    (function init() {
+      const imgURLInit = images[0];
+      preview.style.backgroundImage = `url('${imgURLInit}')`;
+      setMetrics(); genEdges(); rebuild(imgURLInit);
+    })();
 
     shuffleBtn.addEventListener('click', shufflePieces);
+    changeBgBtn.addEventListener('click', changeBackground);
     autoLockToggle.addEventListener('change', () => { autoLock = autoLockToggle.checked; });
   </script>
 </body>
