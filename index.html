@@ -333,54 +333,101 @@
     }
 
     function makeDraggable(el) {
-      let drag = false, offX = 0, offY = 0;
+      let drag = false, offX = 0, offY = 0, startRect = null, prevPos = null;
+
       el.addEventListener('pointerdown', e => {
+        // empêcher le drag des pièces verrouillées (sauf ALT)
         if (el.classList.contains('locked') && !e.altKey) return;
-        drag = true; el.setPointerCapture(e.pointerId);
-        const r = el.getBoundingClientRect();
-        offX = e.clientX - r.left; offY = e.clientY - r.top;
-        el.style.zIndex = 20; el.style.opacity = .96;
+
+        drag = true;
+        el.setPointerCapture(e.pointerId);
+
+        // position actuelle écran AVANT déplacement de conteneur
+        startRect = el.getBoundingClientRect();
+        offX = e.clientX - startRect.left;
+        offY = e.clientY - startRect.top;
+
+        // amener dans le body mais SANS sauter : on fige à la position écran
         document.body.appendChild(el);
+        el.style.position = 'fixed';                // coords en pixels écran
+        el.style.left = startRect.left + 'px';
+        el.style.top = startRect.top + 'px';
+        el.style.zIndex = 20;
+        el.style.opacity = .96;
+
+        prevPos = { left: startRect.left, top: startRect.top };
       });
+
       window.addEventListener('pointermove', e => {
         if (!drag) return;
-        el.style.left = (e.clientX - offX) + 'px';
-        el.style.top = (e.clientY - offY) + 'px';
+        const nx = e.clientX - offX;
+        const ny = e.clientY - offY;
+        // éviter des reflows inutiles
+        if (!prevPos || prevPos.left !== nx || prevPos.top !== ny) {
+          el.style.left = nx + 'px';
+          el.style.top = ny + 'px';
+          prevPos = { left: nx, top: ny };
+        }
       });
+
       window.addEventListener('pointerup', e => {
-        if (!drag) return; drag = false;
-        el.releasePointerCapture(e.pointerId); el.style.zIndex = ''; el.style.opacity = 1;
-        const prev = el.dataset.posIdx; if (prev && occupied.get(+prev) === el) occupied.delete(+prev);
+        if (!drag) return;
+        drag = false;
+        el.releasePointerCapture(e.pointerId);
+        el.style.zIndex = '';
+        el.style.opacity = 1;
+
+        // libérer l’ancienne case si besoin
+        const prev = el.dataset.posIdx;
+        if (prev && occupied.get(+prev) === el) occupied.delete(+prev);
+
         const bcr = board.getBoundingClientRect();
         const cx = e.clientX - offX + el.offsetWidth / 2;
         const cy = e.clientY - offY + el.offsetHeight / 2;
-        if (cx >= bcr.left && cx <= bcr.right && cy >= bcr.top && cy <= bcr.bottom) {
-          const localX = cx - bcr.left, localY = cy - bcr.top;
+
+        const insideBoard = (cx >= bcr.left && cx <= bcr.right && cy >= bcr.top && cy <= bcr.bottom);
+
+        if (insideBoard) {
+          // déposer dans le plateau (coordonnées relatives au plateau)
+          const localX = cx - bcr.left;
+          const localY = cy - bcr.top;
           const col = clamp(Math.round(localX / cell - 0.5), 0, COLS - 1);
           const row = clamp(Math.round(localY / cell - 0.5), 0, ROWS - 1);
           const idx = row * COLS + col;
-          if (occupied.has(idx)) { returnToTray(el); return; }
-          board.appendChild(el);
-          const bleed = (el.offsetWidth - cell) / 2;
-          el.style.left = (col * cell - bleed) + 'px';
-          el.style.top = (row * cell - bleed) + 'px';
-          el.dataset.posIdx = idx;
-          occupied.set(idx, el);
-          if (autoLock && +el.dataset.index === idx) {
-            el.classList.add('locked'); placedCount++; updateProgress();
+
+          if (occupied.has(idx)) {
+            returnToTray(el); // case occupée → retour bac
+          } else {
+            board.appendChild(el);
+            // repasser en position:absolute dans le nouveau conteneur
+            el.style.position = 'absolute';
+            const bleed = (el.offsetWidth - cell) / 2;
+            el.style.left = (col * cell - bleed) + 'px';
+            el.style.top = (row * cell - bleed) + 'px';
+            el.dataset.posIdx = idx;
+            occupied.set(idx, el);
+            if (autoLock && +el.dataset.index === idx) {
+              el.classList.add('locked');
+              placedCount++;
+              updateProgress();
+            }
           }
         } else {
+          // hors plateau → retour bac
           returnToTray(el);
         }
       });
 
+      // double-clic: déverrouiller
       el.addEventListener('dblclick', () => {
         if (el.classList.contains('locked')) {
           el.classList.remove('locked');
-          const prev = el.dataset.posIdx; if (prev && occupied.get(+prev) === el) occupied.delete(+prev);
+          const prev = el.dataset.posIdx;
+          if (prev && occupied.get(+prev) === el) occupied.delete(+prev);
         }
       });
     }
+
 
     function returnToTray(el) {
       trayInner.appendChild(el);
