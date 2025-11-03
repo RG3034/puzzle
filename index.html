@@ -336,20 +336,19 @@
       let drag = false, offX = 0, offY = 0, startRect = null, prevPos = null;
 
       el.addEventListener('pointerdown', e => {
-        // empêcher le drag des pièces verrouillées (sauf ALT)
         if (el.classList.contains('locked') && !e.altKey) return;
 
         drag = true;
         el.setPointerCapture(e.pointerId);
 
-        // position actuelle écran AVANT déplacement de conteneur
+        // Position écran *avant* de changer de conteneur
         startRect = el.getBoundingClientRect();
         offX = e.clientX - startRect.left;
         offY = e.clientY - startRect.top;
 
-        // amener dans le body mais SANS sauter : on fige à la position écran
+        // Évite le "saut" : on passe en fixed aux mêmes coordonnées écran
         document.body.appendChild(el);
-        el.style.position = 'fixed';                // coords en pixels écran
+        el.style.position = 'fixed';
         el.style.left = startRect.left + 'px';
         el.style.top = startRect.top + 'px';
         el.style.zIndex = 20;
@@ -362,7 +361,6 @@
         if (!drag) return;
         const nx = e.clientX - offX;
         const ny = e.clientY - offY;
-        // éviter des reflows inutiles
         if (!prevPos || prevPos.left !== nx || prevPos.top !== ny) {
           el.style.left = nx + 'px';
           el.style.top = ny + 'px';
@@ -377,18 +375,17 @@
         el.style.zIndex = '';
         el.style.opacity = 1;
 
-        // libérer l’ancienne case si besoin
+        // Libère l’éventuelle case occupée par cette pièce
         const prev = el.dataset.posIdx;
         if (prev && occupied.get(+prev) === el) occupied.delete(+prev);
 
         const bcr = board.getBoundingClientRect();
         const cx = e.clientX - offX + el.offsetWidth / 2;
         const cy = e.clientY - offY + el.offsetHeight / 2;
-
         const insideBoard = (cx >= bcr.left && cx <= bcr.right && cy >= bcr.top && cy <= bcr.bottom);
 
         if (insideBoard) {
-          // déposer dans le plateau (coordonnées relatives au plateau)
+          // Dépôt dans le plateau (coordonnées relatives)
           const localX = cx - bcr.left;
           const localY = cy - bcr.top;
           const col = clamp(Math.round(localX / cell - 0.5), 0, COLS - 1);
@@ -396,16 +393,17 @@
           const idx = row * COLS + col;
 
           if (occupied.has(idx)) {
-            returnToTray(el); // case occupée → retour bac
+            // Case déjà occupée → retour bac
+            returnToTray(el);
           } else {
             board.appendChild(el);
-            // repasser en position:absolute dans le nouveau conteneur
             el.style.position = 'absolute';
             const bleed = (el.offsetWidth - cell) / 2;
             el.style.left = (col * cell - bleed) + 'px';
             el.style.top = (row * cell - bleed) + 'px';
             el.dataset.posIdx = idx;
             occupied.set(idx, el);
+
             if (autoLock && +el.dataset.index === idx) {
               el.classList.add('locked');
               placedCount++;
@@ -413,12 +411,12 @@
             }
           }
         } else {
-          // hors plateau → retour bac
+          // Hors plateau → retour bac
           returnToTray(el);
         }
       });
 
-      // double-clic: déverrouiller
+      // Double-clic : déverrouiller
       el.addEventListener('dblclick', () => {
         if (el.classList.contains('locked')) {
           el.classList.remove('locked');
@@ -430,13 +428,30 @@
 
 
     function returnToTray(el) {
-      trayInner.appendChild(el);
-      const bleed = (el.offsetWidth - cell) / 2;
-      const x = 12 + Math.random() * Math.max(12, (tray.clientWidth - (cell + 2 * bleed) - 36));
-      const y = 12 + Math.random() * Math.max(12, (tray.clientHeight * 2 - (cell + 2 * bleed) - 36));
-      el.style.left = x + 'px'; el.style.top = y + 'px';
+      // Toujours revenir en absolute dans le bac
+      el.classList.remove('locked');
+      el.style.position = 'absolute';
+      el.style.zIndex = '';
+      el.style.opacity = 1;
+
+      // Oublier l’emplacement sur le plateau
+      const prev = el.dataset.posIdx;
+      if (prev && occupied.get(+prev) === el) occupied.delete(+prev);
       el.dataset.posIdx = '';
+
+      trayInner.appendChild(el);
+
+      // Repositionnement aléatoire dans le bac
+      const bleed = (el.offsetWidth - cell) / 2;
+      const elW = cell + 2 * bleed;
+      const maxX = Math.max(12, (tray.clientWidth - elW - 36));
+      const maxY = Math.max(12, (tray.clientHeight * 2 - elW - 36)); // zone scrollable
+      const x = 12 + Math.random() * maxX;
+      const y = 12 + Math.random() * maxY;
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
     }
+
 
     function updateProgress() { countEl.textContent = String(placedCount); }
 
